@@ -12,7 +12,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class AuditoriaDAO {
+public class AuditoriaDAO implements AuditoriaRepository {
 
     public List<Dipj> listarEmpresas() {
         List<Dipj> lista = new ArrayList<>();

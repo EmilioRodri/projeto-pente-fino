@@ -1,13 +1,21 @@
 package com.auditoria;
 
 import com.auditoria.dao.AuditoriaDAO;
+import com.auditoria.dao.AuditoriaRepository;
+import com.auditoria.dto.ResultadoAuditoriaDTO;
+import com.auditoria.exception.DadosInvalidosException;
 import com.auditoria.model.Bem;
 import com.auditoria.model.Dimof;
 import com.auditoria.model.Dipj;
 import com.auditoria.model.ResultadoAuditoria;
 import com.auditoria.model.ResultadoAuditoria.StatusAuditoria;
 import com.auditoria.service.MalhaFinaService;
+import com.auditoria.service.NotificacaoGateway;
 import com.auditoria.service.RelatorioPdfService;
+import com.auditoria.service.regras.RegraOmissaoReceita;
+import com.auditoria.service.regras.RegraVariacaoPatrimonial;
+import com.auditoria.service.regras.RegraDistribuicaoDisfarcadaLucros;
+import com.auditoria.util.AuditoriaMapper;
 import com.auditoria.util.Formatador;
 
 import javafx.application.Application;
@@ -26,16 +34,23 @@ import javafx.stage.Stage;
 
 import java.math.BigDecimal;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 
 public class DashboardApp extends Application {
 
-    private final MalhaFinaService auditoriaService = new MalhaFinaService();
-    private final RelatorioPdfService pdfService = new RelatorioPdfService();
+    // Composition Root: Instanciando dependências injetando as regras (Strategy)
+    private final MalhaFinaService auditoriaService = new MalhaFinaService(
+        List.of(new RegraOmissaoReceita(), new RegraVariacaoPatrimonial(), new RegraDistribuicaoDisfarcadaLucros())
+    );
     
-    private final AuditoriaDAO dao = new AuditoriaDAO();
+    // Inversão de Dependência: Variáveis tipadas pelas Interfaces (Contratos)
+    private final NotificacaoGateway notificacaoGateway = new RelatorioPdfService();
+    private final AuditoriaRepository dao = new AuditoriaDAO();
 
-    private ObservableList<ResultadoAuditoria> dadosTabela;
+    // Cache mantém a entidade original intacta; a ObservableList alimenta a tela com DTOs
+    private final List<ResultadoAuditoria> cacheResultados = new ArrayList<>();
+    private ObservableList<ResultadoAuditoriaDTO> dadosTabela;
     private PieChart grafico;
 
     public static void main(String[] args) {
@@ -52,7 +67,12 @@ public class DashboardApp extends Application {
         
         List<ResultadoAuditoria> resultadosIniciais = auditoriaService.processar(empresas, cartoes, bens);
         
-        dadosTabela = FXCollections.observableArrayList(resultadosIniciais);
+        cacheResultados.addAll(resultadosIniciais);
+        List<ResultadoAuditoriaDTO> dtos = resultadosIniciais.stream()
+            .map(AuditoriaMapper::paraDTO)
+            .toList();
+
+        dadosTabela = FXCollections.observableArrayList(dtos);
 
         TabPane tabPane = new TabPane();
         
@@ -108,23 +128,23 @@ public class DashboardApp extends Application {
         grafico.setTitle("Status da Malha Fiscal");
         grafico.setLegendVisible(true);
 
-        TableView<ResultadoAuditoria> tabela = new TableView<>();
+        TableView<ResultadoAuditoriaDTO> tabela = new TableView<>();
         tabela.setItems(dadosTabela);
 
-        TableColumn<ResultadoAuditoria, String> colNome = new TableColumn<>("Contribuinte");
+        TableColumn<ResultadoAuditoriaDTO, String> colNome = new TableColumn<>("Contribuinte");
         colNome.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().razaoSocial()));
         colNome.setPrefWidth(220);
 
-        TableColumn<ResultadoAuditoria, String> colCnpj = new TableColumn<>("CNPJ");
+        TableColumn<ResultadoAuditoriaDTO, String> colCnpj = new TableColumn<>("CNPJ");
         colCnpj.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().cnpj()));
         colCnpj.setPrefWidth(140);
 
-        TableColumn<ResultadoAuditoria, String> colDiferenca = new TableColumn<>("Divergência");
-        colDiferenca.setCellValueFactory(data -> new SimpleStringProperty(Formatador.moeda(data.getValue().diferenca())));
+        TableColumn<ResultadoAuditoriaDTO, String> colDiferenca = new TableColumn<>("Divergência");
+        colDiferenca.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().diferencaFormatada()));
         colDiferenca.setPrefWidth(120);
 
-        TableColumn<ResultadoAuditoria, String> colStatus = new TableColumn<>("Status");
-        colStatus.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().status().toString()));
+        TableColumn<ResultadoAuditoriaDTO, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().status()));
         colStatus.setPrefWidth(120);
         
         colStatus.setCellFactory(column -> new TableCell<>() {
@@ -147,10 +167,14 @@ public class DashboardApp extends Application {
         tabela.getColumns().addAll(colNome, colCnpj, colDiferenca, colStatus);
 
         tabela.setRowFactory(tv -> {
-            TableRow<ResultadoAuditoria> row = new TableRow<>();
+            TableRow<ResultadoAuditoriaDTO> row = new TableRow<>();
             row.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && (!row.isEmpty())) {
-                    mostrarDetalhes(row.getItem());
+                    ResultadoAuditoriaDTO selecionado = row.getItem();
+                    cacheResultados.stream()
+                        .filter(r -> r.cnpj().equals(selecionado.cnpj()))
+                        .findFirst()
+                        .ifPresent(this::mostrarDetalhes);
                 }
             });
             return row;
@@ -160,16 +184,23 @@ public class DashboardApp extends Application {
         btnGerarPdf.getStyleClass().add("button-acao");
         btnGerarPdf.setDisable(true);
         tabela.getSelectionModel().selectedItemProperty().addListener((obs, old, novo) -> {
-            btnGerarPdf.setDisable(novo == null || novo.status() != StatusAuditoria.MALHA_FINA);
+            btnGerarPdf.setDisable(novo == null || !"MALHA_FINA".equals(novo.status()));
         });
+        
         btnGerarPdf.setOnAction(e -> {
-            if (tabela.getSelectionModel().getSelectedItem() != null) {
-                pdfService.gerarNotificacao(tabela.getSelectionModel().getSelectedItem());
-                Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setTitle("Sucesso");
-                alert.setHeaderText("Documento Gerado");
-                alert.setContentText("O Auto de Infração foi salvo na pasta do projeto.");
-                alert.show();
+            ResultadoAuditoriaDTO selecionado = tabela.getSelectionModel().getSelectedItem();
+            if (selecionado != null) {
+                cacheResultados.stream()
+                    .filter(r -> r.cnpj().equals(selecionado.cnpj()))
+                    .findFirst()
+                    .ifPresent(original -> {
+                        notificacaoGateway.gerarNotificacao(original);
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Sucesso");
+                        alert.setHeaderText("Documento Gerado");
+                        alert.setContentText("O Auto de Infração foi salvo na pasta do projeto.");
+                        alert.show();
+                    });
             }
         });
 
@@ -220,6 +251,10 @@ public class DashboardApp extends Application {
         
         btnSimular.setOnAction(e -> {
             try {
+                if (txtCnpj.getText().isBlank() || txtNome.getText().isBlank()) {
+                    throw new DadosInvalidosException("O CNPJ e a Razão Social são obrigatórios para realizar o cruzamento.");
+                }
+
                 BigDecimal receita = new BigDecimal(txtReceita.getText().replace(",", "."));
                 BigDecimal despesa = new BigDecimal(txtDespesa.getText().replace(",", "."));
                 BigDecimal bancoValor = new BigDecimal(txtBanco.getText().replace(",", "."));
@@ -235,7 +270,9 @@ public class DashboardApp extends Application {
                     List.of(novaDipj), List.of(novaDimof), List.of(novoBem)
                 );
                 
-                dadosTabela.add(resultado.get(0));
+                ResultadoAuditoria original = resultado.get(0);
+                cacheResultados.add(original);
+                dadosTabela.add(AuditoriaMapper.paraDTO(original));
                 atualizarGrafico();
                 
                 txtCnpj.clear(); txtNome.clear(); txtReceita.clear(); 
@@ -249,9 +286,21 @@ public class DashboardApp extends Application {
                 alerta.setContentText("O contribuinte foi salvo no Banco de Dados e analisado.");
                 alerta.show();
 
+            } catch (DadosInvalidosException ex) {
+                Alert erro = new Alert(Alert.AlertType.WARNING);
+                erro.setTitle("Atenção - Inconsistência de Dados");
+                erro.setHeaderText("Campos Incompletos");
+                erro.setContentText(ex.getMessage());
+                erro.show();
+            } catch (NumberFormatException ex) {
+                Alert erro = new Alert(Alert.AlertType.WARNING);
+                erro.setTitle("Erro de Formato");
+                erro.setContentText("Insira apenas valores numéricos válidos nos campos financeiros.");
+                erro.show();
             } catch (Exception ex) {
                 Alert erro = new Alert(Alert.AlertType.ERROR);
-                erro.setContentText("Erro ao salvar: " + ex.getMessage());
+                erro.setTitle("Erro de Sistema");
+                erro.setContentText("Falha na persistência ou processamento: " + ex.getMessage());
                 erro.show();
                 ex.printStackTrace();
             }
@@ -263,7 +312,7 @@ public class DashboardApp extends Application {
 
     private void atualizarGrafico() {
         if (grafico == null || dadosTabela == null) return;
-        long qtdMalha = dadosTabela.stream().filter(r -> r.status() == StatusAuditoria.MALHA_FINA).count();
+        long qtdMalha = dadosTabela.stream().filter(r -> "MALHA_FINA".equals(r.status())).count();
         long qtdRegular = dadosTabela.size() - qtdMalha;
         grafico.getData().clear();
         grafico.getData().add(new PieChart.Data("Regular (" + qtdRegular + ")", qtdRegular));

@@ -1,20 +1,46 @@
 package com.auditoria.dao;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class Conexao {
+    
+    // Declaração do dataSource que estava faltando
+    private static HikariDataSource dataSource;
 
-    private static final String URL = "jdbc:mysql://localhost:3306/db_auditoria?useTimezone=true&serverTimezone=UTC";
-    private static final String USER = "root";
-    private static final String PASSWORD = "admin123"; 
+    // Bloco executado na primeira vez que a classe é chamada
+    static {
+        String url = "jdbc:mysql://localhost:3306/malhafina?serverTimezone=America/Sao_Paulo&createDatabaseIfNotExist=true";
+        String user = System.getenv().getOrDefault("DB_USER", "root");
+        String pass = System.getenv().getOrDefault("DB_PASSWORD", "SUA_SENHA_LOCAL_AQUI");
+        
+        inicializarHikari(url, user, pass);
+    }
+
+    private static void inicializarHikari(String url, String user, String pass) {
+        if (dataSource != null) dataSource.close();
+        
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(url); 
+        config.setUsername(user);
+        config.setPassword(pass);
+        config.setMaximumPoolSize(10); 
+        config.setMinimumIdle(2);      
+        config.setConnectionTimeout(30000);
+        
+        dataSource = new HikariDataSource(config);
+    }
+
+    private Conexao() {}
 
     public static Connection getConexao() throws SQLException {
-        try {
-            return DriverManager.getConnection(URL, USER, PASSWORD);
-        } catch (SQLException e) {
-            throw new SQLException("Erro ao conectar no banco: " + e.getMessage());
-        }
+        return dataSource.getConnection();
+    }
+    
+    // Método exclusivo para injeção de testes em memória (H2)
+    public static void configurarParaTestes() {
+        inicializarHikari("jdbc:h2:mem:malhafina;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
     }
 }

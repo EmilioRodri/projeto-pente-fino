@@ -1,44 +1,36 @@
-#  Projeto Pente Fino - Motor de Malha Fiscal
+#  O Pente Fino (Motor de Malha Fina Fiscal)
 
-> Sistema de Auditoria Digital e Detecção de Fraudes Tributárias desenvolvido em Java.
+Um sistema de auditoria fiscal automatizado focado no cruzamento de dados tributários e detecção de infrações patrimoniais. Desenvolvido em **Java**, o projeto simula a inteligência de negócios utilizada em malhas finas corporativas e governamentais, aplicando validações automatizadas e gerando autos de infração em formato PDF.
 
-![Status](https://img.shields.io/badge/Status-Concluído-brightgreen)
-![Java](https://img.shields.io/badge/Java-17-orange)
-![Tech](https://img.shields.io/badge/Tech-JavaFX%20%7C%20MySQL%20%7C%20JUnit-blue)
+##  Arquitetura e Padrões de Projeto
 
-##  Sobre o Projeto
-
-Este projeto simula o núcleo de processamento da **Malha Fina da Receita Federal**. O objetivo é cruzar dados de múltiplas fontes (Declarações Fiscais, Informes Bancários e Registro de Bens) para identificar automaticamente inconsistências e indícios de sonegação fiscal.
-
-O sistema foi desenvolvido com foco em **Arquitetura em Camadas**, **Design Patterns** (DAO) e **Clean Code**, simulando um ambiente corporativo real.
-
-##  Funcionalidades Principais
-
-* **Persistência de Dados:** Integração completa com banco de dados **MySQL** utilizando o padrão **DAO (Data Access Object)** e JDBC.
-* **Motor de Regras (Core):**
-    *  *Cruzamento Bancário:* Identifica receitas não declaradas comparando extratos x declarações.
-    *  *Variação Patrimonial a Descoberto:* Identifica compras de bens sem lastro financeiro (Sinais Exteriores de Riqueza).
-* **Geração de Documentos:** Emissão automática de **Auto de Infração em PDF** com cálculo de multas e fundamentação legal.
-* **Simulador Manual:** Interface para inserção de dados em tempo real para testar cenários de fraude e salvamento no banco.
-* **Dashboard Executivo:** Interface gráfica (JavaFX) com gráficos estatísticos e identidade visual governamental.
+O núcleo do sistema foi construído visando alta coesão e baixo acoplamento:
+* **Padrão Strategy:** O motor de regras de negócio é totalmente desacoplado. Novas infrações fiscais podem ser conectadas ao sistema sem alterar a classe principal de processamento (`MalhaFinaService`).
+* **Padrão DAO (Data Access Object):** Isolamento da camada de persistência.
+* **Test-Driven Development (TDD):** Validação matemática do motor de regras blindada por testes unitários e de integração utilizando um banco de dados em memória, garantindo a integridade do sistema a cada nova versão.
 
 ##  Tecnologias Utilizadas
 
-* **Linguagem:** Java 17 (LTS)
-* **Interface:** JavaFX 21 + CSS (Estilização Gov.br)
-* **Banco de Dados:** MySQL 8.0
-* **Build Tool:** Maven
-* **Testes:** JUnit 5 (Cobertura de regras de negócio)
-* **Libs:** iText (PDF Engine), Lombok, MySQL Connector.
+* **Linguagem:** Java (Records, Streams, Orientação a Objetos avançada)
+* **Interface Gráfica:** JavaFX
+* **Banco de Dados (Produção):** MySQL
+* **Banco de Dados (Testes):** H2 Database (In-Memory)
+* **Connection Pool:** HikariCP
+* **Testes Automatizados:** JUnit 5 / Maven Surefire
+* **Geração de Relatórios:** iTextPDF
+* **Gerenciamento de Dependências:** Maven
 
-##  Lógica de Auditoria (Exemplo)
+##  Malhas Fiscais Implementadas
 
-O sistema aplica a seguinte lógica para Variação Patrimonial:
+O motor de auditoria processa as entidades `Dipj` (Declaração de Receitas e Despesas), `Dimof` (Movimentação Bancária) e `Bem` (Aquisições Patrimoniais), aplicando atualmente as seguintes regras:
 
-```java
-BigDecimal lucroDisponivel = receita.subtract(despesa);
-BigDecimal gastosBens = bens.stream().map(Bem::valor).reduce(BigDecimal::add);
+1. **Omissão de Receita (Sonegação):** Dispara quando o volume transacionado nas contas bancárias supera a receita bruta declarada no exercício.
+2. **Variação Patrimonial a Descoberto:** Detecta aquisição de bens incompatíveis com a soma da receita declarada, evidenciando acréscimo patrimonial sem origem lícita comprovada.
+3. **Distribuição Disfarçada de Lucros (DDL):** Cruza a aquisição de bens patrimoniais contra o lucro líquido contábil, detectando confusão patrimonial e uso indevido da PJ para custeio pessoal de sócios.
 
-if (gastosBens.compareTo(lucroDisponivel) > 0) {
-    throw new SonegacaoException("Variação Patrimonial a Descoberto");
-}
+##  Como Executar o Projeto
+
+**1. Clonar o repositório**
+```bash
+git clone [https://github.com/seu-usuario/projeto-pente-fino.git](https://github.com/seu-usuario/projeto-pente-fino.git)
+cd projeto-pente-fino
