@@ -14,3 +14,5 @@ Thumbs.db
 
 # Ignorar logs
 *.log
+
+autos_infracao/
