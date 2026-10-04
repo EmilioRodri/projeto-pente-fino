@@ -1,5 +1,7 @@
 #  O Pente Fino (Motor de Malha Fina Fiscal)
 
+[![CI Pipeline - O Pente Fino](https://github.com/EmilioRodri/projeto-pente-fino/actions/workflows/ci.yml/badge.svg)](https://github.com/EmilioRodri/projeto-pente-fino/actions/workflows/ci.yml)
+
 Um sistema de auditoria fiscal automatizado focado no cruzamento de dados tributários e detecção de infrações patrimoniais. Desenvolvido em **Java**, o projeto simula a inteligência de negócios utilizada em malhas finas corporativas e governamentais, aplicando validações automatizadas e gerando autos de infração em formato PDF.
 
 ##  Arquitetura e Padrões de Projeto
